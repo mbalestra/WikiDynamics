@@ -28,11 +28,8 @@ source("functions.R",local=TRUE)
 
 if(!file.exists("Data/raw_dynamics_data.csv")){
   
-  # set directory
-  setwd("~/Box/Wikipedia/MISQ_Methods/data/")
-  
   # load and pre-process edit data
-  articles.1000<-read_delim("1000_articles.csv",delim = ",",col_names=FALSE) %>%
+  articles.1000<-read_delim("Data/1000_articles.csv",delim = ",",col_names=FALSE) %>%
     rename("revid"=X1,
            "parid"=X2,
            "article_id"=X3,
@@ -53,7 +50,7 @@ if(!file.exists("Data/raw_dynamics_data.csv")){
            rev_date = ymd_hms(rev_date))
   
   # load the article meta data, in order to connect edit data with talkpg id data
-  article.meta<-read_delim("articles.csv",delim = ",",col_names=FALSE) %>%
+  article.meta<-read_delim("Data/articles.csv",delim = ",",col_names=FALSE) %>%
     rename("article_id"=X1,
            "talkpg_id"=X2,
            "pg_title"=X3,
@@ -90,9 +87,9 @@ if(!file.exists("Data/raw_dynamics_data.csv")){
            main_lev = ifelse(talk==0,lev,0)) %>%
     arrange(rev_date)
   
-  write.csv(edit_data,file="raw_dynamics_data.csv")
+  write.csv(edit_data,file="Data/raw_dynamics_data.csv")
 }else{
-  edit_data <- read_delim("raw_dynamics_data.csv",delim=",")
+  edit_data <- read_delim("Data/raw_dynamics_data.csv",delim=",")
 }
 
 
@@ -100,7 +97,7 @@ if(!file.exists("Data/raw_dynamics_data.csv")){
 ## MAIN / TALK DATA
 ######################
 
-if(!file.exists("main_talk_data.csv")){
+if(!file.exists("Data/main_talk_data.csv")){
   # create a list of articles with only 1 edit made to them. will want to remove these
   list_1 <- edit_data %>%
     group_by(article_id) %>%
@@ -156,11 +153,10 @@ if(!file.exists("main_talk_data.csv")){
 #    mutate(main_lev_z_1 = Lag(main_lev_z,-1),
 #           talk_lev_z_1 = Lag(talk_lev_z,-1))
   
-  setwd("~/Box/NYU_PostDoc/WikiDynamics/Data/")
-  write.csv(main_talk,file="main_talk_data.csv")
+  write.csv(main_talk,file="Data/main_talk_data.csv")
   
 }else{
-  main_talk <- read_delim("main_talk_data.csv",delim=",")
+  main_talk <- read_delim("Data/main_talk_data.csv",delim=",")
 }
    
 
