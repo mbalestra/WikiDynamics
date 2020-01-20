@@ -62,8 +62,27 @@ if(!file.exists("Data/raw_dynamics_data.csv")){
            "url"=X9) %>%
     select(-type,-codna_ID,-ofer_ID,-url)
   
+  # recode article_ids and talkpg_ids
+  articles.1000$talkpg_id <- NA
+  
+  for(i in 1:nrow(articles.1000)){
+    if(articles.1000$talk[i]==0){
+      article <- articles.1000$article_id[i]
+      talk <- article.meta[article.meta$article_id==article,"talkpg_id"]
+      articles.1000$talkpg_id[i] <- talk
+    }else if(articles.1000$talk[i]==1){
+      talk <- articles.1000$article_id[i]
+      article <- article.meta[article.meta$talkpg_id==talk,"article_id"]
+      articles.1000$article_id[i] <- article
+      articles.1000$talkpg_id[i] <- talk
+    }
+  }
+  
+# write.csv(articles.1000,file="record_talkpgid.csv")
+  
   # join the two data sets
   edit_data <- articles.1000 %>%
+    mutate(article_id = as.numeric(article_id)) %>%
     left_join(article.meta,by="article_id")
   
   rm(articles.1000)
@@ -87,7 +106,7 @@ if(!file.exists("Data/raw_dynamics_data.csv")){
            main_lev = ifelse(talk==0,lev,0)) %>%
     arrange(rev_date)
   
-  write.csv(edit_data,file="Data/raw_dynamics_data.csv")
+  write.csv(edit_data,file="Data/raw_dynamics_data.csv",row.names = FALSE)
 }else{
   edit_data <- read_delim("Data/raw_dynamics_data.csv",delim=",")
 }
@@ -105,7 +124,7 @@ if(!file.exists("Data/main_talk_data.csv")){
     filter(count_edits!=1) %>%
     select(article_id)
   
-  # select out most relevant data
+  # select out most relevant data & pre-process data
   main_talk <- edit_data %>%
     filter(i==0 | is.na(i), 
            j==0 | is.na(j)) %>%
@@ -113,31 +132,50 @@ if(!file.exists("Data/main_talk_data.csv")){
     group_by(article_id) %>%
     arrange(desc(article_id),rev_date) %>%
     select(article_id,user_id,rev_date, main_lev,talk_lev) %>%
-    separate(rev_date,into=c("date","time"),sep=" ") 
+    separate(rev_date,into=c("date","time"),sep=" ") %>%
+    mutate(main_lev = as.numeric(main_lev),
+           talk_lev = as.numeric(talk_lev))
   
-  main_talk$main_lev <- as.numeric(main_talk$main_lev)
-  main_talk$talk_lev <- as.numeric(main_talk$talk_lev)
+  rm(list_1)
   
   # consolidate edits made by the same person on the same day
   main_talk_consol <- data.frame(article_id=numeric(),user_id=character(),date=character(),main_lev=numeric(),talk_lev=numeric())
   
   for(i in 1:nrow(main_talk)){
-    insert <- c(main_talk$article_id[i],main_talk$user_id[i],main_talk$date[i],main_talk$main_lev[i],main_talk$talk_lev[i])
+    
+    article <- as.numeric(main_talk$article_id[i])
+    user <- as.character(main_talk$user_id[i])
+    date <- as.character(main_talk$date[i])
+    main <-  as.numeric(main_talk$main_lev[i])
+    talk <- as.numeric(main_talk$talk_lev[i])
+    
     if(i==1){
-      main_talk_consol <- rbind(main_talk_consol,insert)
-    }else if (main_talk$article_id[i] != main_talk$article_id[i-1]){
-      main_talk_consol <- rbind(main_talk_consol,insert)
-    }else if (main_talk$user_id[i] != main_talk$user_id[i-1] | main_talk$date[i] != main_talk$date[i-1]){
-      main_talk_consol <- rbind(main_talk_consol,insert)
-    }else{
-      last_main <- main_talk$main_lev[i] + main_talk_consol$main_lev[nrow(main_talk_consol)]
-      last_talk <- main_talk$talk_lev[i] + main_talk_consol$talk_lev[nrow(main_talk_consol)]
       
-      main_talk_consol$main_lev[nrow(main_talk_consol)] <- last_main
-      main_talk_consol$talk_lev[nrow(main_talk_consol)] <- last_talk
+      main_talk_consol <- rbind(main_talk_consol,data.frame(article_id=article,user_id=user,date=date,main_lev=main,talk_lev=talk))
+
+    }else if (main_talk$user_id[i] != main_talk$user_id[i-1] | main_talk$date[i] != main_talk$date[i-1] | main_talk$article_id[i] != main_talk$article_id[i-1]){
+      
+      main_talk_consol <- rbind(main_talk_consol,data.frame(article_id=article,user_id=user,date=date,main_lev=main,talk_lev=talk))
+      
+    }else{
+      
+      main_talk_consol$main_lev[nrow(main_talk_consol)] <- main_talk_consol$main_lev[nrow(main_talk_consol)] + main
+      main_talk_consol$talk_lev[nrow(main_talk_consol)] <- main_talk_consol$talk_lev[nrow(main_talk_consol)] + talk
+      
     }
   }  
 
+  # Lag the data and prepare for analysis
+  
+  data <- main_talk_consol %>% 
+    group_by(article_id) %>% 
+    mutate(main_lev_1 = Lag(main_lev,-1),
+           talk_lev_1 = Lag(talk_lev,-1)) %>% 
+    select(-user_id,-date)
+  
+  data <- data[!is.na(data$article_id),]
+  
+  write.csv(data,file="mplus_main_talk_data.csv")
   
   # standardize values
 #  main_talk <- edit_data %>%
@@ -153,12 +191,14 @@ if(!file.exists("Data/main_talk_data.csv")){
 #    mutate(main_lev_z_1 = Lag(main_lev_z,-1),
 #           talk_lev_z_1 = Lag(talk_lev_z,-1))
   
-  write.csv(main_talk,file="Data/main_talk_data.csv")
+  write.csv(main_talk,file="Data/main_talk_data.csv",row.names=FALSE)
   
 }else{
-  main_talk <- read_delim("Data/main_talk_data.csv",delim=",")
+  data <- read_delim("Data/main_talk_data.csv",delim=",")
 }
    
+
+
 
 ######################
 ## INSERT / DELETE VANDALISM
